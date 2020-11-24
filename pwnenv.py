@@ -89,7 +89,7 @@ def main():
 
     args = parser.parse_args()
 
-    if args.subparser_name == 'remote':
+    if args.subparser_name == 'run':
         if not args.remote or args.debugging or args.local or args.shell:
             parser_run.error('one of the arguments -r/--remote -d/--debugging -l/--local -s/--shell is required')
 
