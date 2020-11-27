@@ -56,7 +56,6 @@ def run_container(args):
     if not exists_image(args):
         build(args)
     
-    container_id = subprocess.check_output([DOCKER, 'ps', '-a', '-q', '-f', f'name=pwnenv-{args.version}-shell']).decode().strip('\n')
 
     if args.remote:
         pass
@@ -65,6 +64,7 @@ def run_container(args):
     elif args.local:
         pass
     elif args.shell:
+        container_id = subprocess.check_output([DOCKER, 'ps', '-a', '-q', '-f', f'name=pwnenv-{args.version}-shell']).decode().strip('\n')
         if not container_id:
             subprocess.call([DOCKER, 'run', '--name', f'pwnenv-{args.version}-shell', '-it', f'pwnenv:{args.version}'])
         else:
