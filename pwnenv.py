@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import os
+import re
 import sys
 import argparse
 import subprocess
@@ -17,7 +18,7 @@ WORKDIR = os.curdir
 
 
 def exists_image(args):
-    return True if len(subprocess.check_output(['docker', 'images', f'pwnenv:{args.version}']).split(b'\n')) > 2 else False
+    return True if len(subprocess.check_output([DOCKER, 'images', f'pwnenv:{args.version}']).split(b'\n')) > 2 else False
 
 
 def build(args):
@@ -31,13 +32,13 @@ def build(args):
                 RUN gem install one_gadget
                 '''
 
-        with open('/tmp/Dockerfile', 'wt') as f:
+        with open(os.curdir + '/Dockerfile', 'wt') as f:
             f.write(dockerfile)
 
 
     def build_image(args):
         r = True if subprocess.call([DOCKER, 'build', '-t', f'pwnenv:{args.version}', WORKDIR]) == 0 else False
-        os.remove('/tmp/Dockerfile')
+        os.remove(os.curdir + '/Dockerfile')
         return r
 
 
@@ -123,8 +124,6 @@ def clean(args):
                     exit()
                 subprocess.call([DOCKER, 'rmi', f'pwnenv:{images[idx].split()[1]}'])
 
-    
-
 
 def main():
     parser = argparse.ArgumentParser(description='Pwnable environment based Docker.')
@@ -137,7 +136,13 @@ def main():
     parser_run = sub_parser.add_parser('run', help='run conatiner')
     parser_clean = sub_parser.add_parser('clean', help='clean images or containers')
 
-    parser_build.add_argument('version', type=float, choices=[16.04, 18.04, 20.04], nargs='?', default=20.04, help='environment image version(default: 20.04)')
+    def type_version(string):
+        if re.match(r'^(1[6-9]|20)\.(04|10)$', string):
+            return string
+        else:
+            raise argparse.ArgumentTypeError('version is invalid')
+
+    parser_build.add_argument('version', type=type_version, nargs='?', default='20.04', help='environment image version(default: 20.04)')
     parser_build.set_defaults(func=build)
 
     def type_binary(string):
@@ -157,7 +162,7 @@ def main():
                 raise argparse.ArgumentTypeError(f'path is not exists')
         else:
             raise argparse.ArgumentTypeError(f'required format src:target')
-    parser_run.add_argument('version', type=float, choices=[16.04, 18.04, 20.04], nargs='?', default=20.04, help='environment image version(default: 20.04)')
+    parser_run.add_argument('version', type=type_version, nargs='?', default='20.04', help='environment image version(default: 20.04)')
     parser_run.add_argument('-b', '--binary', type=type_binary, help='target binary with remote or local')
     parser_run.add_argument('-v', '--volume', default=False, type=type_volume, help='mount a volume')
     run_remote = parser_run.add_argument_group('remote')
