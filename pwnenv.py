@@ -1,4 +1,4 @@
-#!/bin/python3
+#!/usr/bin/python3
 import os
 import sys
 import argparse
@@ -66,7 +66,7 @@ def run_container(args):
     elif args.shell:
         container_id = subprocess.check_output([DOCKER, 'ps', '-a', '-q', '-f', f'name=pwnenv-{args.version}-shell']).decode().strip('\n')
         if not container_id:
-            subprocess.call([DOCKER, 'run', '--name', f'pwnenv-{args.version}-shell', '-it', f'pwnenv:{args.version}'])
+            subprocess.call([DOCKER, 'run', '--name', f'pwnenv-{args.version}-shell', '-it', args.volume and '-v', args.volume and f'{args.volume["src"]}:{args.volume["target"]}', f'pwnenv:{args.version}'])
         else:
             if subprocess.check_output([DOCKER, 'ps', '-q', '-f', f'id={container_id}', '-f', 'status=exited']).decode().strip('\n'):
                 subprocess.call([DOCKER, 'start', container_id])
@@ -132,8 +132,20 @@ def main():
     parser_build.add_argument('version', type=float, choices=[16.04, 18.04, 20.04], nargs='?', default=20.04, help='environment image version(default: 20.04)')
     parser_build.set_defaults(func=build)
 
+    def volume_type(string):
+        string = string.split(':')
+        if len(string) == 2:
+            src, target = string
+            src = os.path.abspath(src)
+            if os.path.exists(src):
+                return {'src':src, 'target':target}
+            else:
+                raise argparse.ArgumentTypeError(f'path is not exists')
+        else:
+            raise argparse.ArgumentTypeError(f'required format src:target')
     parser_run.add_argument('version', type=float, choices=[16.04, 18.04, 20.04], nargs='?', default=20.04, help='environment image version(default: 20.04)')
     parser_run.add_argument('-b', '--binary', help='target binary with remote or local')
+    parser_run.add_argument('-v', '--volume', type=volume_type, help='mount a volume')
     run_remote = parser_run.add_argument_group('remote')
     remote_group = run_remote.add_mutually_exclusive_group()
     remote_group.add_argument('-r', '--remote', action='store_true', help='for remote environment')
@@ -144,7 +156,6 @@ def main():
     local_group = run_local.add_mutually_exclusive_group()
     local_group.add_argument('-l', '--local', action='store_true', help='for local environment(run a binary)')
     local_group.add_argument('-s', '--shell', action='store_true', help='for local environment(spawn a shell)')
-    local_group.add_argument('-v', '--volume', help='mount a volume')
     parser_run.set_defaults(func=run_container)
 
     parser_clean.add_argument('-i', '--images', action='store_true', help='clean images')
