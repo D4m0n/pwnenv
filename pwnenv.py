@@ -24,22 +24,20 @@ def build(args):
     def make_dockerfile(args):
         dockerfile = f'''\
                 FROM ubuntu:{args.version}
-
                 RUN ln -fs /usr/share/zoneinfo/Asia/Seoul /etc/localtime
-
                 RUN apt update && apt install -y gdb git vim gcc-multilib g++-multilib python python3 python3-pip libcapstone3 ruby-full strace socat sudo
                 RUN git clone https://github.com/pwndbg/pwndbg && cd pwndbg && ./setup.sh
                 RUN git clone https://github.com/JonathanSalwan/ROPgadget.git && cd ROPgadget && python3 setup.py install
                 RUN gem install one_gadget
                 '''
 
-        with open('Dockerfile', 'wt') as f:
+        with open('/tmp/Dockerfile', 'wt') as f:
             f.write(dockerfile)
 
 
     def build_image(args):
         r = True if subprocess.call([DOCKER, 'build', '-t', f'pwnenv:{args.version}', WORKDIR]) == 0 else False
-        os.remove('Dockerfile')
+        os.remove('/tmp/Dockerfile')
         return r
 
 
@@ -55,18 +53,25 @@ def build(args):
 def run_container(args):
     if not exists_image(args):
         build(args)
-    
 
+    args_volume = ['-v', args.volume and f'{args.volume["src"]}:{args.volume["target"]}']
     if args.remote:
-        pass
+        args_docker = [DOCKER, 'run', '--rm', '--name', f'pwnenv-{args.version}-remote', '-p', f'{args.port}:{args.port}', '-it', '--ulimit', 'core=-1','-v', f'{args.binary}:/binary', f'pwnenv:{args.version}', 'socat', f'TCP-LISTEN:{args.port},reuseaddr,fork', 'EXEC:"strace -f /binary"']
+        args.volume and args_docker.insert(10, ''.join(args_volume))
+        subprocess.call(args_docker)
     elif args.debugging:
-        pass
+        container_id = subprocess.check_output([DOCKER, 'ps', '-a', '-q', '-f', f'name=pwnenv-{args.version}-remote']).decode().strip('\n')
+        subprocess.call([DOCKER, 'exec', '-it', container_id, 'sh', '-c', '/usr/bin/gdb -c core'])
     elif args.local:
-        pass
+        args_docker = [DOCKER, 'run', '--rm', '-it', '-v', f'{args.binary}:/binary', f'pwnenv:{args.version}', '/binary']
+        args.volume and args_docker.insert(3, ''.join(args_volume))
+        subprocess.call(args_docker)
     elif args.shell:
         container_id = subprocess.check_output([DOCKER, 'ps', '-a', '-q', '-f', f'name=pwnenv-{args.version}-shell']).decode().strip('\n')
         if not container_id:
-            subprocess.call([DOCKER, 'run', '--name', f'pwnenv-{args.version}-shell', '-it', args.volume and '-v', args.volume and f'{args.volume["src"]}:{args.volume["target"]}', f'pwnenv:{args.version}'])
+            args_docker = [DOCKER, 'run', '--name', f'pwnenv-{args.version}-shell', '-it', '--ulimit', 'core=-1', f'pwnenv:{args.version}', '/bin/bash']
+            args.volume and args_docker.insert(7, ''.join(args_volume))
+            subprocess.call(args_docker)
         else:
             if subprocess.check_output([DOCKER, 'ps', '-q', '-f', f'id={container_id}', '-f', 'status=exited']).decode().strip('\n'):
                 subprocess.call([DOCKER, 'start', container_id])
@@ -83,7 +88,9 @@ def clean(args):
         containers = containers[1:-1]
         for i, container in enumerate(containers):
             print(f'[{i}] {container}')
-        idx_list = input('choose the index of the containers you want to clean[a or idx,]: ').split(',')
+        idx_list = ['']
+        while idx_list == ['']:
+            idx_list = input('choose the index of the containers you want to clean[a or idx,]: ').split(',')
         if len(idx_list) == 1 and idx_list[0] == 'a':
             [subprocess.call([DOCKER, 'stop', f'{containers[i].split()[0]}']) for i in range(len(containers))]
             [subprocess.call([DOCKER, 'rm', f'{containers[i].split()[0]}']) for i in range(len(containers))]
@@ -121,6 +128,7 @@ def clean(args):
 
 def main():
     parser = argparse.ArgumentParser(description='Pwnable environment based Docker.')
+    parser.add_argument('--version', action='version', version='%(prog)s 0.1')
     pwnenv_help = lambda args: parser.print_help()
     parser.set_defaults(func=pwnenv_help)
     sub_parser = parser.add_subparsers(dest='subparser_name', help='sub-command')
@@ -132,7 +140,13 @@ def main():
     parser_build.add_argument('version', type=float, choices=[16.04, 18.04, 20.04], nargs='?', default=20.04, help='environment image version(default: 20.04)')
     parser_build.set_defaults(func=build)
 
-    def volume_type(string):
+    def type_binary(string):
+        path = os.path.abspath(string)
+        if os.path.exists(path):
+            return path
+        else:
+            raise argparse.ArgumentTypeError('path is not exists.')
+    def type_volume(string):
         string = string.split(':')
         if len(string) == 2:
             src, target = string
@@ -144,14 +158,14 @@ def main():
         else:
             raise argparse.ArgumentTypeError(f'required format src:target')
     parser_run.add_argument('version', type=float, choices=[16.04, 18.04, 20.04], nargs='?', default=20.04, help='environment image version(default: 20.04)')
-    parser_run.add_argument('-b', '--binary', help='target binary with remote or local')
-    parser_run.add_argument('-v', '--volume', type=volume_type, help='mount a volume')
+    parser_run.add_argument('-b', '--binary', type=type_binary, help='target binary with remote or local')
+    parser_run.add_argument('-v', '--volume', default=False, type=type_volume, help='mount a volume')
     run_remote = parser_run.add_argument_group('remote')
     remote_group = run_remote.add_mutually_exclusive_group()
     remote_group.add_argument('-r', '--remote', action='store_true', help='for remote environment')
     remote_group.add_argument('-d', '--debugging', action='store_true', help='for debugging core file from crashed remote')
     run_remote.add_argument('-p', '--port', type=int, default=1234, help='port fowarding for remote(default: 1234)')
-    run_remote.add_argument('-u', '--user', default='ubuntu', help='users to run the target binary(default: ubuntu)')
+    # run_remote.add_argument('-u', '--user', default='ubuntu', help='users to run the target binary(default: ubuntu)')
     run_local = parser_run.add_argument_group('local')
     local_group = run_local.add_mutually_exclusive_group()
     local_group.add_argument('-l', '--local', action='store_true', help='for local environment(run a binary)')
