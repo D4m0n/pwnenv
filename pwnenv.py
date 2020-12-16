@@ -14,6 +14,7 @@ def check_docker():
         exit()
 
 DOCKER = check_docker()
+GDB = '/usr/bin/gdb'
 WORKDIR = os.curdir
 
 
@@ -60,11 +61,15 @@ def run_container(args):
         args_docker = [DOCKER, 'run', '--rm', '--name', f'pwnenv-{args.version}-remote', '-p', f'{args.port}:{args.port}', '-it', '--ulimit', 'core=-1','-v', f'{args.binary}:/binary', f'pwnenv:{args.version}', 'socat', f'TCP-LISTEN:{args.port},reuseaddr,fork', 'EXEC:"strace -f /binary"']
         args.volume and args_docker.insert(10, ''.join(args_volume))
         subprocess.call(args_docker)
-    elif args.debugging:
+    elif args.crashed:
         container_id = subprocess.check_output([DOCKER, 'ps', '-a', '-q', '-f', f'name=pwnenv-{args.version}-remote']).decode().strip('\n')
-        subprocess.call([DOCKER, 'exec', '-it', container_id, 'sh', '-c', '/usr/bin/gdb -c core'])
+        subprocess.call([DOCKER, 'exec', '-it', container_id, 'sh', '-c', f'{GDB} -c core'])
     elif args.local:
         args_docker = [DOCKER, 'run', '--rm', '-it', '-v', f'{args.binary}:/binary', f'pwnenv:{args.version}', '/binary']
+        args.volume and args_docker.insert(3, ''.join(args_volume))
+        subprocess.call(args_docker)
+    elif args.debugging:
+        args_docker = [DOCKER, 'run', '--rm', '-it', '-v', f'{args.binary}:/binary', f'pwnenv:{args.version}', 'sh', '-c', f'{GDB} /binary']
         args.volume and args_docker.insert(3, ''.join(args_volume))
         subprocess.call(args_docker)
     elif args.shell:
@@ -168,12 +173,13 @@ def main():
     run_remote = parser_run.add_argument_group('remote')
     remote_group = run_remote.add_mutually_exclusive_group()
     remote_group.add_argument('-r', '--remote', action='store_true', help='for remote environment')
-    remote_group.add_argument('-d', '--debugging', action='store_true', help='for debugging core file from crashed remote')
+    remote_group.add_argument('-c', '--crashed', action='store_true', help='for debugging core file from crashed remote')
     run_remote.add_argument('-p', '--port', type=int, default=1234, help='port fowarding for remote(default: 1234)')
     # run_remote.add_argument('-u', '--user', default='ubuntu', help='users to run the target binary(default: ubuntu)')
     run_local = parser_run.add_argument_group('local')
     local_group = run_local.add_mutually_exclusive_group()
     local_group.add_argument('-l', '--local', action='store_true', help='for local environment(run a binary)')
+    local_group.add_argument('-d', '--debugging', action='store_true', help='for debugging with gdb')
     local_group.add_argument('-s', '--shell', action='store_true', help='for local environment(spawn a shell)')
     parser_run.set_defaults(func=run_container)
 
@@ -184,13 +190,13 @@ def main():
     args = parser.parse_args()
 
     if args.subparser_name == 'run':
-        if not any([args.remote, args.debugging, args.local, args.shell]):
-            parser_run.error('one of the arguments -r/--remote -d/--debugging -l/--local -s/--shell is required')
+        if not any([args.remote, args.crashed, args.local, args.debugging, args.shell]):
+            parser_run.error('one of the arguments -r/--remote -c/--crashed -l/--local -d/--debugging -s/--shell is required')
 
-        if (args.remote or args.debugging) and (args.local or args.shell):
+        if (args.remote or args.crashed) and (args.local or args.shell):
             parser_run.error('not allowed when used remote and local both')
 
-        if (args.remote or args.local) and not args.binary:
+        if (args.remote or args.local or args.debugging) and not args.binary:
             parser_run.error('the following arguments are required: -b/--binary')
 
     if args.subparser_name == 'clean':
