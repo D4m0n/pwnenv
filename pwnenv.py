@@ -27,8 +27,9 @@ def build(args):
         dockerfile = f'''\
                 FROM ubuntu:{args.version}
                 RUN ln -fs /usr/share/zoneinfo/Asia/Seoul /etc/localtime
-                RUN apt update && apt install -y gdb git vim gcc-multilib g++-multilib python python3 python3-pip libcapstone3 ruby-full strace socat sudo
-                RUN git clone https://github.com/pwndbg/pwndbg && cd pwndbg && ./setup.sh
+                RUN apt-mark hold libc6 libc-bin
+                RUN apt update && apt install -y gdb git vim python python3 python3-pip ruby-full strace socat sudo
+                RUN sh -c "$(wget http://gef.blah.cat/sh -O -)"
                 RUN git clone https://github.com/JonathanSalwan/ROPgadget.git && cd ROPgadget && python3 setup.py install
                 RUN gem install one_gadget
                 '''
