@@ -28,7 +28,7 @@ def build(args):
                 FROM ubuntu:{args.version}
                 RUN ln -fs /usr/share/zoneinfo/Asia/Seoul /etc/localtime
                 RUN apt-mark hold libc6 libc-bin
-                RUN apt update && apt install -y gdb git vim python python3 python3-pip ruby-full strace socat sudo
+                RUN apt update && apt install -y gdb git vim python python3 python3-pip ruby-full strace socat sudo wget
                 RUN sh -c "$(wget http://gef.blah.cat/sh -O -)"
                 RUN git clone https://github.com/JonathanSalwan/ROPgadget.git && cd ROPgadget && python3 setup.py install
                 RUN gem install one_gadget
