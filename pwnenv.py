@@ -27,9 +27,9 @@ def build(args):
         dockerfile = f'''\
                 FROM ubuntu:{args.version}
                 RUN ln -fs /usr/share/zoneinfo/Asia/Seoul /etc/localtime
-                RUN apt-mark hold libc6 libc-bin
-                RUN apt update && apt install -y gdb git vim python python3 python3-pip ruby-full strace socat sudo
-                RUN sh -c "$(wget http://gef.blah.cat/sh -O -)"
+                RUN dpkg --add-architecture i386
+                RUN apt update && apt install -y gdb git vim python python3 python3-pip ruby-full strace socat sudo libc6:i386 libncurses5:i386 libstdc++6:i386
+                RUN git clone https://github.com/pwndbg/pwndbg && cd pwndbg && ./setup.sh
                 RUN git clone https://github.com/JonathanSalwan/ROPgadget.git && cd ROPgadget && python3 setup.py install
                 RUN gem install one_gadget
                 '''
@@ -58,26 +58,31 @@ def run_container(args):
         build(args)
 
     args_volume = ['-v', args.volume and f'{args.volume["src"]}:{args.volume["target"]}']
+    #args_libc = ['-v', args.libc and f'{args.libc}:/libc'] + ['-e', args.libc and f'LD_PRELOAD=/libc']
     if args.remote:
         args_docker = [DOCKER, 'run', '--rm', '--name', f'pwnenv-{args.version}-remote', '-p', f'{args.port}:{args.port}', '-it', '--ulimit', 'core=-1','-v', f'{args.binary}:/binary', f'pwnenv:{args.version}', 'socat', f'TCP-LISTEN:{args.port},reuseaddr,fork', 'EXEC:"strace -f /binary"']
-        args.volume and args_docker.insert(10, ''.join(args_volume))
+        if args.volume: args_docker[10:10] = args_volume
+        #if args.libc: args_docker[10:10] = args_libc
         subprocess.call(args_docker)
     elif args.crashed:
         container_id = subprocess.check_output([DOCKER, 'ps', '-a', '-q', '-f', f'name=pwnenv-{args.version}-remote']).decode().strip('\n')
         subprocess.call([DOCKER, 'exec', '-it', container_id, 'sh', '-c', f'{GDB} -c core'])
     elif args.local:
         args_docker = [DOCKER, 'run', '--rm', '-it', '-v', f'{args.binary}:/binary', f'pwnenv:{args.version}', '/binary']
-        args.volume and args_docker.insert(3, ''.join(args_volume))
+        #args.volume and args_docker.insert(3, ''.join(args_volume))
+        if args.volume: args_docker[3:3] = args_volume
         subprocess.call(args_docker)
     elif args.debugging:
         args_docker = [DOCKER, 'run', '--rm', '-it', '-v', f'{args.binary}:/binary', f'pwnenv:{args.version}', 'sh', '-c', f'{GDB} /binary']
-        args.volume and args_docker.insert(3, ''.join(args_volume))
+        #args.volume and args_docker.insert(3, ''.join(args_volume))
+        if args.volume: args_docker[3:3] = args_volume
         subprocess.call(args_docker)
     elif args.shell:
         container_id = subprocess.check_output([DOCKER, 'ps', '-a', '-q', '-f', f'name=pwnenv-{args.version}-shell']).decode().strip('\n')
         if not container_id:
             args_docker = [DOCKER, 'run', '--name', f'pwnenv-{args.version}-shell', '-it', '--ulimit', 'core=-1', f'pwnenv:{args.version}', '/bin/bash']
-            args.volume and args_docker.insert(7, ''.join(args_volume))
+            #args.volume and args_docker.insert(7, ''.join(args_volume))
+            if args.volume: args_docker[7:7] = args_volume
             subprocess.call(args_docker)
         else:
             if subprocess.check_output([DOCKER, 'ps', '-q', '-f', f'id={container_id}', '-f', 'status=exited']).decode().strip('\n'):
@@ -157,6 +162,14 @@ def main():
             return path
         else:
             raise argparse.ArgumentTypeError('path is not exists.')
+
+    def type_libc(string):
+        path = os.path.abspath(string)
+        if os.path.exists(path):
+            return path
+        else:
+            raise argparse.ArgumentTypeError('path is not exists.')
+
     def type_volume(string):
         string = string.split(':')
         if len(string) == 2:
@@ -168,9 +181,10 @@ def main():
                 raise argparse.ArgumentTypeError(f'path is not exists')
         else:
             raise argparse.ArgumentTypeError(f'required format src:target')
-    parser_run.add_argument('version', type=type_version, nargs='?', default='20.04', help='environment image version(default: 20.04)')
+    parser_run.add_argument('version', type=type_version, default='20.04', help='environment image version(default: 20.04)')
     parser_run.add_argument('-b', '--binary', type=type_binary, help='target binary with remote or local')
     parser_run.add_argument('-v', '--volume', default=False, type=type_volume, help='mount a volume')
+    #parser_run.add_argument('--libc', type=type_libc, default=False, help='execute binary with specific libc library')
     run_remote = parser_run.add_argument_group('remote')
     remote_group = run_remote.add_mutually_exclusive_group()
     remote_group.add_argument('-r', '--remote', action='store_true', help='for remote environment')
