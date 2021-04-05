@@ -196,7 +196,7 @@ def main():
     remote_group.add_argument('-r', '--remote', action='store_true', help='for remote environment')
     remote_group.add_argument('-c', '--crashed', action='store_true', help='for debugging core file from crashed remote')
     run_remote.add_argument('-p', '--port', type=int, default=1234, help='port fowarding for remote(default: 1234)')
-    run_remote.add_argument('-t', '--trace', action='store_true', default=True, help='run target binary with strace')
+    run_remote.add_argument('-t', '--trace', action='store_true', default=False, help='run target binary with strace')
     # run_remote.add_argument('-u', '--user', default='ubuntu', help='users to run the target binary(default: ubuntu)')
     run_local = parser_run.add_argument_group('local')
     local_group = run_local.add_mutually_exclusive_group()
