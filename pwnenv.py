@@ -60,7 +60,11 @@ def run_container(args):
     args_volume = ['-v', args.volume and f'{args.volume["src"]}:{args.volume["target"]}']
     #args_libc = ['-v', args.libc and f'{args.libc}:/libc'] + ['-e', args.libc and f'LD_PRELOAD=/libc']
     if args.remote:
-        args_docker = [DOCKER, 'run', '--rm', '--name', f'pwnenv-{args.version}-remote', '-p', f'{args.port}:{args.port}', '-it', '--ulimit', 'core=-1','-v', f'{args.binary}:/binary', f'pwnenv:{args.version}', 'socat', f'TCP-LISTEN:{args.port},reuseaddr,fork', 'EXEC:"strace -f /binary"']
+        if args.trace:
+            args_docker = [DOCKER, 'run', '--rm', '--name', f'pwnenv-{args.version}-remote', '-p', f'{args.port}:{args.port}', '-it', '--ulimit', 'core=-1','-v', f'{args.binary}:/binary', f'pwnenv:{args.version}', 'socat', f'TCP-LISTEN:{args.port},reuseaddr,fork', 'EXEC:"strace -f /binary"']
+        else:
+            args_docker = [DOCKER, 'run', '--rm', '--name', f'pwnenv-{args.version}-remote', '-p', f'{args.port}:{args.port}', '-it', '--cap-add', 'SYS_PTRACE', '--ulimit', 'core=-1','-v', f'{args.binary}:/binary', f'pwnenv:{args.version}', 'socat', f'TCP-LISTEN:{args.port},reuseaddr,fork', 'EXEC:"/binary"']
+
         if args.volume: args_docker[10:10] = args_volume
         #if args.libc: args_docker[10:10] = args_libc
         subprocess.call(args_docker)
@@ -181,6 +185,8 @@ def main():
                 raise argparse.ArgumentTypeError(f'path is not exists')
         else:
             raise argparse.ArgumentTypeError(f'required format src:target')
+
+
     parser_run.add_argument('version', type=type_version, default='20.04', help='environment image version(default: 20.04)')
     parser_run.add_argument('-b', '--binary', type=type_binary, help='target binary with remote or local')
     parser_run.add_argument('-v', '--volume', default=False, type=type_volume, help='mount a volume')
@@ -190,6 +196,7 @@ def main():
     remote_group.add_argument('-r', '--remote', action='store_true', help='for remote environment')
     remote_group.add_argument('-c', '--crashed', action='store_true', help='for debugging core file from crashed remote')
     run_remote.add_argument('-p', '--port', type=int, default=1234, help='port fowarding for remote(default: 1234)')
+    run_remote.add_argument('-t', '--trace', action='store_true', default=True, help='run target binary with strace')
     # run_remote.add_argument('-u', '--user', default='ubuntu', help='users to run the target binary(default: ubuntu)')
     run_local = parser_run.add_argument_group('local')
     local_group = run_local.add_mutually_exclusive_group()
