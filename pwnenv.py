@@ -28,7 +28,7 @@ def build(args):
                 FROM ubuntu:{args.version}
                 RUN ln -fs /usr/share/zoneinfo/Asia/Seoul /etc/localtime
                 RUN dpkg --add-architecture i386
-                RUN apt update && apt install -y gdb git vim python python3 python3-pip ruby-full strace socat sudo libc6:i386 libncurses5:i386 libstdc++6:i386
+                RUN apt update && apt install -y gdb git vim python3 python3-pip ruby-full strace socat sudo libc6:i386 libncurses5:i386 libstdc++6:i386 wget
                 RUN git clone https://github.com/pwndbg/pwndbg && cd pwndbg && ./setup.sh
                 RUN git clone https://github.com/JonathanSalwan/ROPgadget.git && cd ROPgadget && python3 setup.py install
                 RUN gem install one_gadget
@@ -77,7 +77,7 @@ def run_container(args):
         if args.volume: args_docker[3:3] = args_volume
         subprocess.call(args_docker)
     elif args.debugging:
-        args_docker = [DOCKER, 'run', '--rm', '-it', '-v', f'{args.binary}:/binary', f'pwnenv:{args.version}', 'sh', '-c', f'{GDB} /binary']
+        args_docker = [DOCKER, 'run', '--rm', '-it', '-v', f'{args.binary}:/binary', f'pwnenv:{args.version}', '/bin/bash', '-c', f'{GDB} /binary']
         #args.volume and args_docker.insert(3, ''.join(args_volume))
         if args.volume: args_docker[3:3] = args_volume
         subprocess.call(args_docker)
